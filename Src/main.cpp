@@ -782,29 +782,97 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE END 4 */
 
+void STMPE811_Clear(){
+	uint8_t data[1]={0xFF};
+	HAL_I2C_Mem_Write(&hi2c1, 0x82, 0x11, 1, data, 1, 1000);
+}
+
+void STMPE811_WriteNumber(uint8_t number){
+	static const uint8_t number_table[16]={0x77, 0x06, 0xB5, 0x97, 0xC6, 0xD3, 0xF3, 0x07, 0xF7, 0xD7, 0xe7, 0xF2, 0x71, 0xB6, 0xF1, 0xE1};
+	uint8_t data[1];
+	data[0]=number_table[number%16] | ((number>15)?0x08:0x00);
+	HAL_I2C_Mem_Write(&hi2c1, 0x82, 0x10, 1, data, 1, 1000);
+	data[0]=~data[0];
+	HAL_I2C_Mem_Write(&hi2c1, 0x82, 0x11, 1, data, 1, 1000);
+}
+
+
+void SelfTest(){
+	uint8_t data[2], rxdata[2];
+
+	uint8_t error=0;
+
+	//TESTE STMPE811
+	if(HAL_I2C_IsDeviceReady(&hi2c1, 0x82, 3, 1000)==HAL_OK){
+		HAL_I2C_Mem_Read(&hi2c1,0x82, 0x00, 1, data, 2,1000);
+		if(*(uint16_t*)data==0x1108){
+			data[0]=0x0b;
+			HAL_I2C_Mem_Write(&hi2c1, 0x82, 0x04, 1, data, 1, 1000);
+			data[0]=0xff;
+			HAL_I2C_Mem_Write(&hi2c1, 0x82, 0x17, 1, data, 1, 1000);
+			HAL_I2C_Mem_Write(&hi2c1, 0x82, 0x13, 1, data, 1, 1000);
+			data[0]=0x0f;
+			HAL_I2C_Mem_Write(&hi2c1, 0x82, 0x11, 1, data, 1, 1000);
+			HAL_I2C_Mem_Write(&hi2c1, 0x82, 0x10, 1, data, 1, 1000);
+			osDelay(200);
+		}
+	} else {
+		error|=1;
+	}
+
+	//TESTE MPU
+	data[0]=0xF5; data[1]=0xff;
+	HAL_GPIO_WritePin(MPU_CS_GPIO_Port, MPU_CS_Pin, GPIO_PIN_SET);
+	osDelay(1);
+	HAL_GPIO_WritePin(MPU_CS_GPIO_Port, MPU_CS_Pin, GPIO_PIN_RESET);
+	HAL_SPI_TransmitReceive(&hspi2, data, rxdata, 2, 1000);
+	HAL_GPIO_WritePin(MPU_CS_GPIO_Port, MPU_CS_Pin, GPIO_PIN_SET);
+	if(rxdata[1]==0x71){
+	} else {
+		error|=2;
+	}
+
+	//TESTE NRF
+	data[0]=0x00; data[1]=0xff;
+	HAL_GPIO_WritePin(NRF_SS_GPIO_Port, NRF_SS_Pin, GPIO_PIN_SET);
+	osDelay(1);
+	HAL_GPIO_WritePin(NRF_SS_GPIO_Port, NRF_SS_Pin, GPIO_PIN_RESET);
+	HAL_SPI_TransmitReceive(&hspi1, data, rxdata, 2, 1000);
+	HAL_GPIO_WritePin(NRF_SS_GPIO_Port, NRF_SS_Pin, GPIO_PIN_SET);
+	osDelay(1);
+	HAL_GPIO_WritePin(NRF_SS_GPIO_Port, NRF_SS_Pin, GPIO_PIN_RESET);
+	HAL_SPI_TransmitReceive(&hspi1, data, rxdata, 2, 1000);
+	HAL_GPIO_WritePin(NRF_SS_GPIO_Port, NRF_SS_Pin, GPIO_PIN_SET);
+
+	if(rxdata[0]==0x0E){
+	} else {
+		error|=4;
+	}
+
+	if(error){
+		uint8_t i=5;
+		while(i--){
+			STMPE811_WriteNumber(0x1E);
+			osDelay(500);
+			STMPE811_Clear();
+			osDelay(100);
+			STMPE811_WriteNumber(error);
+			osDelay(1000);
+			STMPE811_Clear();
+			osDelay(100);
+		}
+	} else {
+
+	}
+}
+
 /* StartDefaultTask function */
 void StartDefaultTask(void const * argument)
 {
 	/* init code for USB_DEVICE */
 	MX_USB_DEVICE_Init();
-	uint16_t data;
-	if(HAL_I2C_IsDeviceReady(&hi2c1, 0x82, 3, 1000)!=HAL_OK){
-		HAL_I2C_Mem_Read(&hi2c1,0x82, 0x00, 1, (uint8_t*)&data, 2,1000);
-		if(data==0x1108){
-			uint8_t value=0x0b;
-			HAL_I2C_Mem_Write(&hi2c1, 0x82, 0x04, 1, &value, 1, 1000);
-			value=0xff;
-			HAL_I2C_Mem_Write(&hi2c1, 0x82, 0x17, 1, &value, 1, 1000);
-			HAL_I2C_Mem_Write(&hi2c1, 0x82, 0x13, 1, &value, 1, 1000);
 
-			HAL_I2C_Mem_Write(&hi2c1, 0x82, 0x11, 1, &value, 1, 1000);
-			HAL_I2C_Mem_Write(&hi2c1, 0x82, 0x10, 1, &value, 1, 1000);
-			osDelay(200);
-		}
-	} else {
-		HAL_GPIO_WritePin(LED_RED_GPIO_Port, LED_RED_Pin, GPIO_PIN_SET);
-	}
-
+	SelfTest();
 
 	/* USER CODE BEGIN 5 */
 	/* Infinite loop */
