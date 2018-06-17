@@ -58,6 +58,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc1;
+DMA_HandleTypeDef hdma_adc1;
 
 I2C_HandleTypeDef hi2c1;
 
@@ -82,6 +83,7 @@ osThreadId defaultTaskHandle;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_SPI1_Init(void);
@@ -136,6 +138,7 @@ int main(void)
 
 	/* Initialize all configured peripherals */
 	MX_GPIO_Init();
+	MX_DMA_Init();
 	MX_ADC1_Init();
 	MX_I2C1_Init();
 	MX_SPI1_Init();
@@ -270,7 +273,7 @@ static void MX_ADC1_Init(void)
 	hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
 	hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
 	hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
-	hadc1.Init.NbrOfConversion = 2;
+	hadc1.Init.NbrOfConversion = 6;
 	hadc1.Init.DMAContinuousRequests = ENABLE;
 	hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
 	if (HAL_ADC_Init(&hadc1) != HAL_OK)
@@ -282,7 +285,7 @@ static void MX_ADC1_Init(void)
 	 */
 	sConfig.Channel = ADC_CHANNEL_11;
 	sConfig.Rank = 1;
-	sConfig.SamplingTime = ADC_SAMPLETIME_3CYCLES;
+	sConfig.SamplingTime = ADC_SAMPLETIME_15CYCLES;
 	if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
 	{
 		_Error_Handler(__FILE__, __LINE__);
@@ -292,6 +295,42 @@ static void MX_ADC1_Init(void)
 	 */
 	sConfig.Channel = ADC_CHANNEL_2;
 	sConfig.Rank = 2;
+	if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+	{
+		_Error_Handler(__FILE__, __LINE__);
+	}
+
+	/**Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
+	 */
+	sConfig.Channel = ADC_CHANNEL_14;
+	sConfig.Rank = 3;
+	if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+	{
+		_Error_Handler(__FILE__, __LINE__);
+	}
+
+	/**Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
+	 */
+	sConfig.Channel = ADC_CHANNEL_3;
+	sConfig.Rank = 4;
+	if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+	{
+		_Error_Handler(__FILE__, __LINE__);
+	}
+
+	/**Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
+	 */
+	sConfig.Channel = ADC_CHANNEL_4;
+	sConfig.Rank = 5;
+	if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+	{
+		_Error_Handler(__FILE__, __LINE__);
+	}
+
+	/**Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
+	 */
+	sConfig.Channel = ADC_CHANNEL_10;
+	sConfig.Rank = 6;
 	if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
 	{
 		_Error_Handler(__FILE__, __LINE__);
@@ -674,6 +713,21 @@ static void MX_TIM9_Init(void)
 
 }
 
+/**
+ * Enable DMA controller clock
+ */
+static void MX_DMA_Init(void)
+{
+	/* DMA controller clock enable */
+	__HAL_RCC_DMA2_CLK_ENABLE();
+
+	/* DMA interrupt init */
+	/* DMA2_Stream0_IRQn interrupt configuration */
+	HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 5, 0);
+	HAL_NVIC_EnableIRQ(DMA2_Stream0_IRQn);
+
+}
+
 /** Configure pins as 
  * Analog
  * Input
@@ -698,20 +752,25 @@ static void MX_GPIO_Init(void)
 	HAL_GPIO_WritePin(GPIOE, M1_MBL_Pin|M1_MAL_Pin, GPIO_PIN_RESET);
 
 	/*Configure GPIO pin Output Level */
-	HAL_GPIO_WritePin(GPIOC, M0_MBL_Pin|M2_MAL_Pin|MPU_CS_Pin|NRF_CE_Pin, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(GPIOC, M0_MBL_Pin|M2_MAL_Pin, GPIO_PIN_RESET);
 
 	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(GPIOB, CT_uc_Pin|M2_MBL_Pin|M3_MBL_Pin|M3_MAL_Pin, GPIO_PIN_RESET);
 
 	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(GPIOD, CA_Pin|CB_Pin|LED_GREEN_Pin|LED_ORANGE_Pin
-			|LED_RED_Pin|LED_BLUE_Pin|NRF_SS_Pin|uSD_CS_Pin
-			|M0_MAL_Pin, GPIO_PIN_RESET);
+			|LED_RED_Pin|LED_BLUE_Pin|M0_MAL_Pin, GPIO_PIN_RESET);
+
+	/*Configure GPIO pin Output Level */
+	HAL_GPIO_WritePin(GPIOC, MPU_CS_Pin|NRF_CE_Pin, GPIO_PIN_SET);
+
+	/*Configure GPIO pin Output Level */
+	HAL_GPIO_WritePin(GPIOD, NRF_SS_Pin|uSD_CS_Pin, GPIO_PIN_SET);
 
 	/*Configure GPIO pin : ID_Button_Pin */
 	GPIO_InitStruct.Pin = ID_Button_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
+	GPIO_InitStruct.Pull = GPIO_PULLUP;
 	HAL_GPIO_Init(ID_Button_GPIO_Port, &GPIO_InitStruct);
 
 	/*Configure GPIO pins : M1_MBL_Pin M1_MAL_Pin */
@@ -728,11 +787,11 @@ static void MX_GPIO_Init(void)
 	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
 	HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-	/*Configure GPIO pins : NRF_IRQ_Pin S2_Pin */
-	GPIO_InitStruct.Pin = NRF_IRQ_Pin|S2_Pin;
+	/*Configure GPIO pin : NRF_IRQ_Pin */
+	GPIO_InitStruct.Pin = NRF_IRQ_Pin;
 	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+	GPIO_InitStruct.Pull = GPIO_PULLUP;
+	HAL_GPIO_Init(NRF_IRQ_GPIO_Port, &GPIO_InitStruct);
 
 	/*Configure GPIO pins : CT_uc_Pin M2_MBL_Pin M3_MBL_Pin M3_MAL_Pin */
 	GPIO_InitStruct.Pin = CT_uc_Pin|M2_MBL_Pin|M3_MBL_Pin|M3_MAL_Pin;
@@ -744,7 +803,7 @@ static void MX_GPIO_Init(void)
 	/*Configure GPIO pin : INT_MPU_Pin */
 	GPIO_InitStruct.Pin = INT_MPU_Pin;
 	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	GPIO_InitStruct.Pull = GPIO_PULLUP;
 	HAL_GPIO_Init(INT_MPU_GPIO_Port, &GPIO_InitStruct);
 
 	/*Configure GPIO pins : CA_Pin CB_Pin LED_GREEN_Pin LED_ORANGE_Pin
@@ -757,6 +816,12 @@ static void MX_GPIO_Init(void)
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
 	HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+	/*Configure GPIO pin : S2_Pin */
+	GPIO_InitStruct.Pin = S2_Pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	HAL_GPIO_Init(S2_GPIO_Port, &GPIO_InitStruct);
 
 	/*Configure GPIO pin : S1_Pin */
 	GPIO_InitStruct.Pin = S1_Pin;
@@ -796,6 +861,29 @@ void STMPE811_WriteNumber(uint8_t number){
 	HAL_I2C_Mem_Write(&hi2c1, 0x82, 0x11, 1, data, 1, 1000);
 }
 
+void STMPE811_WriteLetter(uint8_t letter){
+	uint8_t data[1];
+	switch(letter){
+	case 'i':
+		data[0]=0x0A;
+		break;
+	case 'b':
+		data[0]=0xFA;
+		break;
+	case 'o':
+		data[0]=0xBA;
+		break;
+	case 'c':
+		data[0]=0xB8;
+		break;
+	default:
+		data[0]=0;
+	}
+	HAL_I2C_Mem_Write(&hi2c1, 0x82, 0x10, 1, data, 1, 1000);
+	data[0]=~data[0];
+	HAL_I2C_Mem_Write(&hi2c1, 0x82, 0x11, 1, data, 1, 1000);
+}
+
 
 void SelfTest(){
 	uint8_t data[2], rxdata[2];
@@ -811,10 +899,6 @@ void SelfTest(){
 			data[0]=0xff;
 			HAL_I2C_Mem_Write(&hi2c1, 0x82, 0x17, 1, data, 1, 1000);
 			HAL_I2C_Mem_Write(&hi2c1, 0x82, 0x13, 1, data, 1, 1000);
-			data[0]=0x0f;
-			HAL_I2C_Mem_Write(&hi2c1, 0x82, 0x11, 1, data, 1, 1000);
-			HAL_I2C_Mem_Write(&hi2c1, 0x82, 0x10, 1, data, 1, 1000);
-			osDelay(200);
 		}
 	} else {
 		error|=1;
@@ -822,6 +906,8 @@ void SelfTest(){
 
 	//TESTE MPU
 	data[0]=0xF5; data[1]=0xff;
+	HAL_GPIO_WritePin(MPU_CS_GPIO_Port, MPU_CS_Pin, GPIO_PIN_RESET);
+	HAL_SPI_TransmitReceive(&hspi2, data, rxdata, 2, 1000);
 	HAL_GPIO_WritePin(MPU_CS_GPIO_Port, MPU_CS_Pin, GPIO_PIN_SET);
 	osDelay(1);
 	HAL_GPIO_WritePin(MPU_CS_GPIO_Port, MPU_CS_Pin, GPIO_PIN_RESET);
@@ -834,8 +920,6 @@ void SelfTest(){
 
 	//TESTE NRF
 	data[0]=0x00; data[1]=0xff;
-	HAL_GPIO_WritePin(NRF_SS_GPIO_Port, NRF_SS_Pin, GPIO_PIN_SET);
-	osDelay(1);
 	HAL_GPIO_WritePin(NRF_SS_GPIO_Port, NRF_SS_Pin, GPIO_PIN_RESET);
 	HAL_SPI_TransmitReceive(&hspi1, data, rxdata, 2, 1000);
 	HAL_GPIO_WritePin(NRF_SS_GPIO_Port, NRF_SS_Pin, GPIO_PIN_SET);
@@ -866,6 +950,23 @@ void SelfTest(){
 	}
 }
 
+extern "C" void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
+	if(GPIO_Pin==GPIO_PIN_2){
+		static uint8_t button=0;
+		static uint32_t tick=0;
+		if(HAL_GPIO_ReadPin(ID_Button_GPIO_Port, ID_Button_Pin)==GPIO_PIN_RESET){
+			tick=HAL_GetTick();
+		} else {
+			uint32_t delay=HAL_GetTick()-tick;
+			if(delay<1000){
+				osSignalSet(defaultTaskHandle, 0x01);
+			} else {
+				osSignalSet(defaultTaskHandle, 0x02);
+			}
+		}
+	}
+}
+
 /* StartDefaultTask function */
 void StartDefaultTask(void const * argument)
 {
@@ -874,10 +975,52 @@ void StartDefaultTask(void const * argument)
 
 	SelfTest();
 
+	uint8_t mode=0, old_mode=-1;
+	uint8_t id=0;
+	uint8_t vbat=9;
+	uint8_t channel=52;
+
+
 	/* USER CODE BEGIN 5 */
 	/* Infinite loop */
 	for(;;)
 	{
+		if(old_mode!=mode){
+			switch(mode){
+			case 0:
+				STMPE811_WriteLetter('i');
+				osDelay(500);
+				STMPE811_WriteNumber(id);
+				break;
+			case 1:
+				STMPE811_WriteLetter('b');
+				osDelay(500);
+				STMPE811_WriteNumber(vbat);
+				break;
+			case 2:
+				STMPE811_WriteLetter('c');
+				osDelay(500);
+				STMPE811_WriteNumber((channel/10)%10);
+				osDelay(500);
+				STMPE811_WriteNumber(channel%10);
+				break;
+			default:
+				break;
+			}
+			old_mode=mode;
+		}
+		osEvent signal=osSignalWait(0x01, 3000);
+		if(signal.status==osEventTimeout){
+			mode=0;
+		} else {
+			switch(signal.value.signals){
+			case 1:
+				++mode%=3;
+				break;
+			default:
+				break;
+			}
+		}
 		osDelay(1);
 	}
 	/* USER CODE END 5 */
