@@ -273,7 +273,7 @@ static void MX_ADC1_Init(void)
 	hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
 	hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
 	hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
-	hadc1.Init.NbrOfConversion = 6;
+	hadc1.Init.NbrOfConversion = 8;
 	hadc1.Init.DMAContinuousRequests = ENABLE;
 	hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
 	if (HAL_ADC_Init(&hadc1) != HAL_OK)
@@ -331,6 +331,24 @@ static void MX_ADC1_Init(void)
 	 */
 	sConfig.Channel = ADC_CHANNEL_10;
 	sConfig.Rank = 6;
+	if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+	{
+		_Error_Handler(__FILE__, __LINE__);
+	}
+
+	/**Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
+	 */
+	sConfig.Channel = ADC_CHANNEL_TEMPSENSOR;
+	sConfig.Rank = 7;
+	if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+	{
+		_Error_Handler(__FILE__, __LINE__);
+	}
+
+	/**Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
+	 */
+	sConfig.Channel = ADC_CHANNEL_VREFINT;
+	sConfig.Rank = 8;
 	if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
 	{
 		_Error_Handler(__FILE__, __LINE__);
@@ -850,6 +868,8 @@ static void MX_GPIO_Init(void)
 void STMPE811_Clear(){
 	uint8_t data[1]={0xFF};
 	HAL_I2C_Mem_Write(&hi2c1, 0x82, 0x11, 1, data, 1, 1000);
+	data[0]=0;
+	HAL_I2C_Mem_Write(&hi2c1, 0x82, 0x10, 1, data, 1, 1000);
 }
 
 void STMPE811_WriteNumber(uint8_t number){
@@ -876,6 +896,9 @@ void STMPE811_WriteLetter(uint8_t letter){
 	case 'c':
 		data[0]=0xB8;
 		break;
+	case '.':
+		data[0]=0x08;
+		break;
 	default:
 		data[0]=0;
 	}
@@ -892,6 +915,8 @@ void SelfTest(){
 
 	//TESTE STMPE811
 	if(HAL_I2C_IsDeviceReady(&hi2c1, 0x82, 3, 1000)==HAL_OK){
+		data[0]=0x02;
+		HAL_I2C_Mem_Write(&hi2c1, 0x82, 0x03, 1, data, 1, 1000);
 		HAL_I2C_Mem_Read(&hi2c1,0x82, 0x00, 1, data, 2,1000);
 		if(*(uint16_t*)data==0x1108){
 			data[0]=0x0b;
@@ -952,7 +977,6 @@ void SelfTest(){
 
 extern "C" void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 	if(GPIO_Pin==GPIO_PIN_2){
-		static uint8_t button=0;
 		static uint32_t tick=0;
 		if(HAL_GPIO_ReadPin(ID_Button_GPIO_Port, ID_Button_Pin)==GPIO_PIN_RESET){
 			tick=HAL_GetTick();
@@ -967,6 +991,38 @@ extern "C" void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 	}
 }
 
+uint8_t AskForNumber(uint8_t number, uint8_t min, uint8_t max){
+	uint8_t numbertemp=number;
+	uint8_t timeout=5;
+	osEvent signal;
+
+	while(timeout){
+		STMPE811_WriteNumber(numbertemp+16);
+		osDelay(100);
+		STMPE811_WriteNumber(numbertemp);
+		signal=osSignalWait(0x03, 1000);
+		if(signal.status==osEventTimeout){
+			timeout--;
+		} else {
+			timeout=5;
+			switch(signal.value.signals){
+			case 1:
+				numbertemp++;
+				if(numbertemp>max){
+					numbertemp=min;
+				}
+				break;
+			case 2:
+				return numbertemp;
+				break;
+			default:
+				break;
+			}
+		}
+	}
+	return number;
+}
+
 /* StartDefaultTask function */
 void StartDefaultTask(void const * argument)
 {
@@ -977,9 +1033,13 @@ void StartDefaultTask(void const * argument)
 
 	uint8_t mode=0, old_mode=-1;
 	uint8_t id=0;
-	uint8_t vbat=9;
+	float vbat=0;
 	uint8_t channel=52;
-
+	uint8_t edit=0;
+	osEvent signal;
+	uint16_t adcvalue[8];
+	float vref;
+	HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adcvalue, 8);
 
 	/* USER CODE BEGIN 5 */
 	/* Infinite loop */
@@ -991,25 +1051,48 @@ void StartDefaultTask(void const * argument)
 				STMPE811_WriteLetter('i');
 				osDelay(500);
 				STMPE811_WriteNumber(id);
+				if(edit){
+					id=AskForNumber(id, 0,15);
+					edit=0;
+					continue;
+				}
 				break;
 			case 1:
 				STMPE811_WriteLetter('b');
 				osDelay(500);
-				STMPE811_WriteNumber(vbat);
+				vref=1.25f/adcvalue[7]*4096.0f;
+				vbat=(adcvalue[5]/4096.0f*vref);
+				vbat=((43000.0f+330.0f)*vbat-330.0f*vref)/10000.0f;
+				STMPE811_WriteNumber((uint8_t)vbat);
+				osDelay(500);
+				STMPE811_WriteLetter('.');
+				osDelay(500);
+				STMPE811_WriteNumber(((uint8_t)(vbat*10.0f))%10);
+				osDelay(500);
+				STMPE811_WriteNumber(((uint8_t)(vbat*100.0f))%10);
+				osDelay(500);
 				break;
 			case 2:
 				STMPE811_WriteLetter('c');
 				osDelay(500);
 				STMPE811_WriteNumber((channel/10)%10);
 				osDelay(500);
+				STMPE811_Clear();
+				osDelay(50);
 				STMPE811_WriteNumber(channel%10);
+				if(edit){
+					channel=channel%10+AskForNumber((channel/10)%10, 0,9)*10;
+					channel=(channel/10)*10+AskForNumber(channel%10, 0,9);
+					edit=0;
+					continue;
+				}
 				break;
 			default:
 				break;
 			}
 			old_mode=mode;
 		}
-		osEvent signal=osSignalWait(0x01, 3000);
+		signal=osSignalWait(0x03, 5000);
 		if(signal.status==osEventTimeout){
 			mode=0;
 		} else {
@@ -1017,9 +1100,15 @@ void StartDefaultTask(void const * argument)
 			case 1:
 				++mode%=3;
 				break;
+			case 2:
+				edit=1;
+				old_mode++;
+				break;
 			default:
 				break;
 			}
+		}
+		if(edit){
 		}
 		osDelay(1);
 	}
